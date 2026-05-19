@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "winner-prediction"
+version = "0.1.0"
+description = "Sofascore 기반 축구 승부 예측 API"
+authors = ["winner-prediction"]
+readme = "README.md"
+packages = [{ include = "server" }]
+
+[tool.poetry.dependencies]
+python = ">=3.14,<3.15"
+fastapi = ">=0.115.0"
+uvicorn = { version = ">=0.32.0", extras = ["standard"] }
+sqlmodel = ">=0.0.22"
+sqlalchemy = { version = ">=2.0.36", extras = ["asyncio"] }
+asyncpg = ">=0.30.0"
+psycopg = { version = ">=3.2.0", extras = ["binary"] }
+alembic = ">=1.14.0"
+httpx = ">=0.28.0"
+pydantic-settings = ">=2.6.0"
+python-dotenv = ">=1.0.0"
+scikit-learn = ">=1.5.0"
+soccerdata = ">=1.9.0"
+sofascore-httpx = { path = "libs/sofascore_httpx", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
