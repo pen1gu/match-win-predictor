@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "sofascore-httpx"
+version = "0.1.0"
+description = "Sofascore public API client (httpx only)"
+authors = ["winner-prediction"]
+packages = [{ include = "sofascore_httpx", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.14,<3.15"
+httpx = ">=0.28.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
