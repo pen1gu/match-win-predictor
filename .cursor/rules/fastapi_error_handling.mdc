@@ -1,0 +1,210 @@
+---
+description: FastAPI 오류 처리, guard 절, HTTPException, 로깅 규칙
+globs:
+  - "app/**/*.py"
+  - "src/**/*.py"
+  - "api/**/*.py"
+  - "routers/**/*.py"
+  - "services/**/*.py"
+  - "middleware/**/*.py"
+alwaysApply: false
+---
+
+# FastAPI 에러 처리 규칙
+
+## 기본 원칙
+
+- 에러 처리와 예외 처리를 **항상 우선순위**에 둔다.
+- 함수의 앞부분에서 입력 검증과 사전 조건을 확인하고, 잘못된 상태를 **조기에 반환**한다.
+- 중첩 `if`를 피하기 위해 guard 절과 early return을 사용한다.
+- 정상 흐름(해피 패스)은 함수의 마지막에 둔다.
+- `if` 블록에서 `return`을 했다면, 그 뒤에서는 되도록 `else`를 쓰지 않는다.
+- 에러 메시지는 사용자 친화적이고 구체적이어야 한다.
+- 로깅 시에는 디버깅에 충분한 컨텍스트를 남기되, 민감한 정보는 기록하지 않는다.
+- 가능하면 공통 에러 응답 형태(에러 팩토리, 공통 TypedDict/Pydantic)를 사용해 일관성을 유지한다.
+
+## HTTPException 사용
+
+- 예상 가능한 API 에러는 `HTTPException`으로 명시적으로 던진다.
+- HTTP 상태 코드는 도메인 의미에 맞게 선택한다.
+- 내부 예외의 메시지나 스택트레이스를 그대로 클라이언트에 노출하지 않는다.
+
+예시 공통 함수:
+
+```python
+from fastapi import HTTPException, status
+
+
+def raise_not_found(*, resource_name: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"{resource_name} not found",
+    )
+```
+
+## Guard 절 패턴
+
+선호하는 형태:
+
+```python
+def validate_user_access(params: dict) -> dict:
+    user_id: int | None = params.get("user_id")
+    has_permission: bool = params.get("has_permission", False)
+
+    if user_id is None:
+        return {"ok": False, "message": "user_id is required"}
+
+    if not has_permission:
+        return {"ok": False, "message": "permission denied"}
+
+    return {"ok": True}
+```
+
+피해야 할 형태:
+
+```python
+def validate_user_access(params: dict) -> dict:
+    user_id: int | None = params.get("user_id")
+    has_permission: bool = params.get("has_permission", False)
+
+    if user_id is not None:
+        if has_permission:
+            return {"ok": True}
+        else:
+            return {"ok": False, "message": "permission denied"}
+    else:
+        return {"ok": False, "message": "user_id is required"}
+```
+
+## 서비스 계층 에러 결과 패턴
+
+- 서비스 함수는 “예상 가능한 실패”에 대해서는 `HTTPException` 대신 **구조화된 결과 객체**를 반환하고, 라우트에서 이를 HTTP 응답으로 변환한다.
+
+```python
+from typing import TypedDict
+
+
+class ServiceResult(TypedDict):
+    error: bool
+    message: str
+    status_code: int
+    data: dict | None
+
+
+async def get_user_profile(params: dict) -> ServiceResult:
+    user_id: int | None = params.get("user_id")
+
+    if user_id is None:
+        return {
+            "error": True,
+            "message": "user_id is required",
+            "status_code": 400,
+            "data": None,
+        }
+
+    if user_id <= 0:
+        return {
+            "error": True,
+            "message": "user_id must be positive",
+            "status_code": 400,
+            "data": None,
+        }
+
+    return {
+        "error": False,
+        "message": "ok",
+        "status_code": 200,
+        "data": {"user_id": user_id},
+    }
+```
+
+## 라우트에서의 변환 패턴
+
+- 라우트 함수는 서비스의 `ServiceResult`를 받아서 적절한 HTTP 응답으로 변환한다.
+- `error == True`이면 `HTTPException`으로 매핑한다.
+
+```python
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.services.user_service import get_user_profile
+
+router = APIRouter()
+
+
+class UserProfileResponse(BaseModel):
+    user_id: int
+
+
+@router.get("/users/{user_id}", response_model=UserProfileResponse)
+async def get_user_profile_route(user_id: int) -> UserProfileResponse:
+    result = await get_user_profile({"user_id": user_id})
+
+    if result["error"]:
+        raise HTTPException(
+            status_code=result["status_code"],
+            detail=result["message"],
+        )
+
+    data = result["data"]
+    if data is None:
+        # 서비스에서 data를 채우지 않은 경우는 개발자 버그로 간주
+        raise HTTPException(
+            status_code=500,
+            detail="invalid service response",
+        )
+
+    return UserProfileResponse(**data)
+```
+
+## 예상치 못한 예외 처리
+
+- 예상치 못한 예외는 미들웨어에서 한 번에 처리한다.
+- 내부적으로는 스택트레이스를 로깅하고, 클라이언트에는 일반적인 메시지를 내려준다.
+- DB 오류, 토큰, 비밀번호, 연결 문자열 등은 절대 응답에 포함하지 않는다.
+
+```python
+import logging
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
+
+
+async def unhandled_exception_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception(
+            "Unhandled error",
+            extra={"path": str(request.url.path)},
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+```
+
+## 로깅 규칙
+
+- 예상치 못한 예외는 `logger.exception` 또는 `logger.error`로 기록한다.
+- 도메인 수준의 실패(예: 유저 없음)는 필요 시 `info` 또는 `warning` 수준으로 기록한다.
+- 로그에는 가능한 한 **요청 식별자, 유저 ID, 리소스 ID** 등을 포함한다.
+- 비밀번호, 토큰, 쿠키, 민감한 페이로드 전체는 로깅하지 않는다.
+
+## 검증 규칙
+
+- 바디는 Pydantic, path/query/header는 타입 힌트 + 명시적 검증으로 처리한다.
+- 잘못된 입력은 가능한 한 빠르게(함수 초반에) 거절한다.
+- 에러 메시지는 “무엇이 잘못됐는지”와 “어떻게 고칠 수 있는지”가 드러나게 작성한다.
+
+## 코드 생성 시 선호 행동
+
+FastAPI 코드를 생성할 때, 다음을 우선한다.
+
+- 함수 첫 부분에 입력 검증과 guard 절을 작성한다.
+- 잘못된 상태를 빠르게 `return` 또는 `HTTPException`으로 처리한다.
+- 라우트는 얇게 유지하고, 서비스/리포지토리로 위임한다.
+- 예상 가능한 실패는 구조화된 결과 또는 `HTTPException`으로 처리한다.
+- 예상치 못한 실패는 미들웨어에서 처리한다.
+- 에러 응답 형태를 프로젝트 전체에서 일관되게 유지한다.
+- 가독성이 좋고 추론하기 쉬운 제어 흐름을 선호한다.

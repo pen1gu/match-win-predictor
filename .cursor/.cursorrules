@@ -1,0 +1,7 @@
+# AI Coding Assistant Instructions
+
+1. **Strict Adherence to Instructions**: NEVER modify, add, or delete code unless explicitly instructed by the user.
+2. **No Unrequested Refactoring**: Do not refactor or "improve" code (including adding logs, changing variable names, or restructuring) that is not part of the requested task.
+3. **Minimal Changes**: When a fix is requested, provide the absolute minimum code change required to solve the problem.
+4. **Follow User Conventions**: Always match the existing coding style and patterns in the codebase.
+5. **Always Respond in Korean**: As per user rules.

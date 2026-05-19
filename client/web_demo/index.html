@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>winner-prediction · Sofascore</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>winner-prediction</h1>
+    <p>Sofascore 기반 최근 경기 · 승무패 예측</p>
+  </header>
+  <main>
+    <section class="controls">
+      <label>
+        limit
+        <input id="limit" type="number" min="1" max="30" value="10" />
+      </label>
+      <label>
+        <input id="includeOutcomes" type="checkbox" />
+        include_outcomes
+      </label>
+      <button id="refreshBtn">새로고침</button>
+    </section>
+    <div id="status" class="status"></div>
+    <section id="games" class="games"></section>
+  </main>
+  <script>
+    window.__API_BASE__ = "";
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+---
+description: winner-prediction 공통 스택·검증·최소 변경 (항상 적용)
+alwaysApply: true
+---
+
+# winner-prediction — 공통
+
+- **스택**: Python 3.11+, Poetry(`pyproject.toml`), 패키지 `server`·`client`.
+- **상세 절차**: `.cursor/AGENTS.md` 필수. 선수 rating 도메인 참고는 `.cursor/PLAYERS.md`.
+- **변경**: import·호출 관계를 먼저 확인하고 **필요한 만큼만** 수정한다. 덩어리 리팩터·무관한 이름 변경은 하지 않는다.
+- **스타일**: `from server...` import, 로깅은 `server/utils/logger/get_logger`, 기존 async/sync 패턴을 따른다.
+
+## 변경 후 검증(로컬)
+
+문법·로딩 단계 확인(크롤/DB 실행 없이):
+
+```bash
+python -m compileall server client predict_test.py test.py
+```
+
+`server` 패키지 전체 import 스윕은 `.cursor/AGENTS.md`의 스크립트를 그대로 사용한다. 실패 시 네트워크보다 **미설치 의존성·import 시점 부작용**을 먼저 본다.
+
+## 계층 한 줄 요약
+
+| 구간 | 점검 |
+|------|------|
+| A | `crawler`(예: fotmob)가 만드는 필드 ↔ `server/app/models/**` 정의 |
+| B | `tasks` → `db_store.save`; PK·`__upsert_conflict_cols__` 변경 시 저장 동작 |
+| C | `compute/player_rating.py`가 읽는 Player 필드 ↔ 모델 정의 일치 |
+
+크롤링·DB 쓰기는 꼭 필요할 때만 실행한다.
