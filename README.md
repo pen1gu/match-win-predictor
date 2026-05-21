@@ -16,6 +16,7 @@ Sofascore 기반 축구 승무패 예측 API (Python 3.14, Poetry, FastAPI, SQLM
 ```bash
 poetry install
 cp .env.example .env
+poetry run playwright install chromium
 ```
 
 ## DB 마이그레이션
@@ -42,7 +43,9 @@ poetry run uvicorn server.app.main:app --reload
 Python에서 `server.app.tasks.task` 모듈 함수 사용:
 
 - `fetch_games_for_league_season_task(league, season)` — `soccerdata.Sofascore.read_schedule`
-- `fetch_game_detail_task(game_id)` — `libs/sofascore_httpx` 상세
+- `fetch_game_detail_task(game_id)` — Playwright로 실제 SofaScore 경기 페이지를 열어 상세(팀/라인업/통계) 수집
+- `historical_backfill_task()` / `run_ingest.py backfill` — 과거 시즌 전체 백필
+- `current_season_ingest_task()` / `run_ingest.py current` — 현재 시즌 지속 갱신
 
 ## 검증
 

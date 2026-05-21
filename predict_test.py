@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import pandas as pd
 
+from server.app.crawler.sofascore_page import PageMatchPayload
+from server.app.integrations.sofascore_page_ingest import build_models_from_page_payload
 from server.app.integrations.sofascore_ingest import build_models_from_schedule_row
+from server.app.models.games.game_details import GameDetails
 from server.app.models.games.game_infos import GameInfos
+from server.app.models.players.player_game_details import PlayerGameDetails
 from server.app.models.teams.team import Team
 from sofascore_httpx.parsers import parse_event, parse_lineups
 
@@ -69,8 +73,48 @@ def test_lineup_parser_splits_substitutes() -> None:
     assert [p.player_id for p in parsed.home.substitutes] == [20]
 
 
+def test_page_payload_builds_detail_models() -> None:
+    payload = PageMatchPayload(
+        game_id=10408559,
+        url="https://www.sofascore.com/football/match/osasuna-sevilla/example#id:10408559",
+        event=SAMPLE_EVENT,
+        lineups={
+            "home": {
+                "team": {"id": 2817},
+                "formation": "4-3-3",
+                "players": [
+                    {
+                        "player": {"id": 10, "name": "Home Starter", "shirtNumber": 9},
+                        "position": "F",
+                        "substitute": False,
+                        "statistics": {"rating": 7.1},
+                    }
+                ],
+            },
+            "away": {
+                "team": {"id": 2833},
+                "formation": "4-2-3-1",
+                "players": [
+                    {
+                        "player": {"id": 20, "name": "Away Starter", "shirtNumber": 1},
+                        "position": "G",
+                        "substitute": False,
+                    }
+                ],
+            },
+        },
+        statistics={"statistics": []},
+        incidents={"incidents": []},
+    )
+    models = build_models_from_page_payload(payload)
+    assert any(isinstance(model, Team) and model.id == 2817 for model in models)
+    assert any(isinstance(model, GameDetails) and model.starting_players for model in models)
+    assert any(isinstance(model, PlayerGameDetails) and model.id == 10 for model in models)
+
+
 if __name__ == "__main__":
     test_parse_event_sample()
     test_schedule_row_keeps_team_names_without_fake_ids()
     test_lineup_parser_splits_substitutes()
+    test_page_payload_builds_detail_models()
     print("predict_test OK")

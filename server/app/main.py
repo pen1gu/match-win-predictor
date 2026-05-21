@@ -7,6 +7,9 @@ from fastapi.staticfiles import StaticFiles
 
 from server.app.api.router import router as api_router
 from server.config.settings import settings
+from server.utils.logger.get_logger import configure_logging
+
+configure_logging()
 
 
 def create_app() -> FastAPI:

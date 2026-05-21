@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, DateTime, JSON
 from sqlmodel import Field, Relationship, SQLModel
 
 from server.utils.model.db_model import TimestampMixin
@@ -23,7 +23,7 @@ class GameInfos(TimestampMixin, SQLModel, table=True):
     away_team_id: int | None = Field(default=None, foreign_key="teams.id")
     home_team_name: str | None = Field(default=None, max_length=255)
     away_team_name: str | None = Field(default=None, max_length=255)
-    match_date: datetime = Field(sa_column_kwargs={"nullable": False})
+    match_date: datetime = Field(sa_type=DateTime(timezone=True), sa_column_kwargs={"nullable": False})
     match_name: str | None = None
     league_name: str | None = None
     league: str | None = Field(default=None, max_length=128)

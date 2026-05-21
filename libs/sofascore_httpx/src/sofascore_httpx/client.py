@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import httpx
+import tls_requests
 
 from sofascore_httpx import endpoints
 from sofascore_httpx.parsers import (
@@ -28,7 +28,7 @@ DEFAULT_HEADERS = {
 
 
 class SofascoreClient:
-    """httpx-only Sofascore API client."""
+    """Sofascore API client (tls_requests — plain httpx는 403)."""
 
     def __init__(
         self,
@@ -41,21 +41,24 @@ class SofascoreClient:
         self._max_retries = max_retries
         self._headers = {**DEFAULT_HEADERS, **(headers or {})}
 
+    def _request_json(self, url: str) -> dict[str, Any]:
+        response = tls_requests.get(url, headers=self._headers, timeout=self._timeout)
+        if response.status_code >= 400:
+            raise RuntimeError(f"Sofascore HTTP {response.status_code}: {url}")
+        data = response.json()
+        if isinstance(data, dict):
+            return data
+        return {"data": data}
+
     async def _get_json(self, url: str) -> dict[str, Any]:
         last_exc: Exception | None = None
-        async with httpx.AsyncClient(timeout=self._timeout, headers=self._headers) as client:
-            for attempt in range(self._max_retries):
-                try:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    data = response.json()
-                    if isinstance(data, dict):
-                        return data
-                    return {"data": data}
-                except (httpx.HTTPError, ValueError) as exc:
-                    last_exc = exc
-                    if attempt + 1 < self._max_retries:
-                        await asyncio.sleep(0.5 * (attempt + 1))
+        for attempt in range(self._max_retries):
+            try:
+                return await asyncio.to_thread(self._request_json, url)
+            except (RuntimeError, ValueError, TypeError) as exc:
+                last_exc = exc
+                if attempt + 1 < self._max_retries:
+                    await asyncio.sleep(0.5 * (attempt + 1))
         raise RuntimeError(f"Sofascore request failed: {url}") from last_exc
 
     async def get_event_raw(self, game_id: int) -> dict[str, Any]:

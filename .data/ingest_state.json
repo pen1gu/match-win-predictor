@@ -1,0 +1,23 @@
+{
+  "historical": {
+    "ESP-La Liga": {
+      "2000/2001": {
+        "schedule_done": true,
+        "last_detail_game_id": null,
+        "detail_failures": 15
+      },
+      "2024/2025": {
+        "schedule_done": true,
+        "last_detail_game_id": 12437615,
+        "detail_failures": 0
+      }
+    },
+    "ENG-Premier League": {
+      "2000/2001": {
+        "schedule_done": true,
+        "last_detail_game_id": 353028,
+        "detail_failures": 8
+      }
+    }
+  }
+}

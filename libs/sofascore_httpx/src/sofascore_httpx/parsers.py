@@ -158,6 +158,9 @@ def _parse_lineup_side(side: dict[str, Any] | None) -> ParsedLineupSide | None:
         return None
     team = side.get("team") or {}
     team_id = team.get("id")
+    players = side.get("players") or side.get("starters") or []
+    if team_id is None and players:
+        team_id = players[0].get("teamId")
     if team_id is None:
         return None
 

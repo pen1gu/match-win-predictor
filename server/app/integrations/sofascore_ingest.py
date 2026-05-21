@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
 from sofascore_httpx import SofascoreClient
-from sofascore_httpx.parsers import ParsedLineupSide, ParsedLineups, ParsedTeamStats
+from sofascore_httpx.parsers import (
+    ParsedLineupPlayer,
+    ParsedLineupSide,
+    ParsedLineups,
+    ParsedPlayerStats,
+    ParsedTeamStats,
+)
 
 from server.app.models.games.game import Game
 from server.app.models.games.game_details import GameDetails
@@ -15,7 +22,11 @@ from server.app.models.players.player import Player
 from server.app.models.players.player_game_details import PlayerGameDetails
 from server.app.models.players.player_infos import PlayerInfos
 from server.app.models.teams.team import Team
+from server.app.tasks.ingest_helpers import extract_season_label
 from server.config.settings import settings
+from server.utils.logger.get_logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _safe_int(value: Any) -> int | None:
@@ -111,7 +122,8 @@ def _lineup_side_models(
     if side is None:
         return None, []
 
-    team_id = side.team_id or (home_team_id if is_home else away_team_id)
+    # Always bind lineup players to the match home/away team FK (side.team_id can be wrong).
+    team_id = home_team_id if is_home else away_team_id
     starters = [p.player_id for p in side.starters]
     subs = [p.player_id for p in side.substitutes]
     ratings = {
@@ -142,17 +154,79 @@ def _lineup_side_models(
                     shirt_number=player.shirt_number,
                     position=[player.position] if player.position else None,
                 ),
-                PlayerGameDetails(
-                    game_id=game_id,
-                    id=player.player_id,
-                    team_id=team_id,
-                    position=player.position,
-                    is_starter=player.is_starter,
-                    rating=player.rating,
-                ),
+                _player_game_details_from_lineup(game_id, team_id, player),
             ]
         )
     return detail, extras
+
+
+def _player_game_details_from_lineup(
+    game_id: int,
+    team_id: int,
+    player: ParsedLineupPlayer,
+) -> PlayerGameDetails:
+    return PlayerGameDetails(
+        game_id=game_id,
+        id=player.player_id,
+        team_id=team_id,
+        position=player.position,
+        is_starter=player.is_starter,
+        rating=player.rating,
+    )
+
+
+def _apply_parsed_player_stats(target: PlayerGameDetails, parsed: ParsedPlayerStats) -> None:
+    if parsed.minutes_played is not None:
+        target.minutes_played = parsed.minutes_played
+    if parsed.rating is not None:
+        target.rating = parsed.rating
+    target.goals = parsed.goals
+    target.assists = parsed.assists
+    raw = parsed.raw or {}
+    for key, attr in (
+        ("totalShots", "shots_total"),
+        ("shotsOnTarget", "shots_on_target"),
+        ("expectedGoals", "expected_goals"),
+        ("expectedGoalsOnTarget", "expected_goals_on_target"),
+        ("expectedAssists", "expected_assists"),
+        ("accuratePass", "passes_completed"),
+        ("totalPass", "passes_attempted"),
+        ("touches", None),
+    ):
+        value = raw.get(key)
+        if value is None or attr is None:
+            continue
+        if attr == "expected_goals" or attr == "expected_goals_on_target" or attr == "expected_assists":
+            target_val = _safe_float(value)
+        else:
+            target_val = _safe_int(value)
+        if target_val is not None:
+            setattr(target, attr, target_val)
+    if raw.get("yellowCards") is not None:
+        target.yellow_cards = _safe_int(raw.get("yellowCards")) or 0
+    if raw.get("redCards") is not None:
+        target.red_cards = _safe_int(raw.get("redCards")) or 0
+    if raw.get("fouls") is not None:
+        target.fouls = _safe_int(raw.get("fouls"))
+
+
+async def _enrich_player_stats(
+    client: SofascoreClient,
+    game_id: int,
+    models: list[Any],
+) -> None:
+    if not settings.ingest_fetch_player_stats:
+        return
+    by_player: dict[int, PlayerGameDetails] = {
+        m.id: m for m in models if isinstance(m, PlayerGameDetails)
+    }
+    for player_id, pgd in by_player.items():
+        try:
+            parsed = await client.get_player_stats(game_id, player_id)
+            _apply_parsed_player_stats(pgd, parsed)
+        except Exception as exc:
+            logger.debug("player stats skip game_id=%s player_id=%s: %s", game_id, player_id, exc)
+        await asyncio.sleep(0.05)
 
 
 async def build_models_from_game_detail(
@@ -167,6 +241,7 @@ async def build_models_from_game_detail(
     home_team_id = event.home_team.id
     away_team_id = event.away_team.id
     match_date = event.start_timestamp or datetime.now(tz=timezone.utc)
+    season_label = extract_season_label(event.season_name)
 
     models: list[Any] = [
         Team(id=home_team_id, name=event.home_team.name, league=event.league_name),
@@ -181,8 +256,9 @@ async def build_models_from_game_detail(
             match_date=match_date,
             match_name=f"{event.home_team.name} - {event.away_team.name}",
             league_name=event.league_name,
-            season=event.season_name,
+            season=season_label,
             match_round=event.round_name,
+            # league: keep schedule value (soccerdata key, e.g. ESP-La Liga) — do not set here
             stadium=event.stadium,
             referee=event.referee,
             finished=event.finished,
@@ -222,6 +298,7 @@ async def build_models_from_game_detail(
 
     models.extend(home_extras)
     models.extend(away_extras)
+    await _enrich_player_stats(client, game_id, models)
     return models
 
 

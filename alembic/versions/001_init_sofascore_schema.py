@@ -1,7 +1,7 @@
 """init sofascore schema
 
 Revision ID: 001_init
-Revises:
+Revises: 002_match_to_game
 Create Date: 2026-05-19
 
 """
@@ -13,12 +13,17 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "001_init"
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = "002_match_to_game"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "games" in inspector.get_table_names():
+        return
+
     op.create_table(
         "teams",
         sa.Column("id", sa.Integer(), autoincrement=False, nullable=False),
@@ -218,6 +223,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    # Legacy FotMob DB는 002에서 rename만 적용됐으므로 001_init이 만든 테이블을 drop하지 않는다.
+    if "manager" in inspector.get_table_names() or "bets" in inspector.get_table_names():
+        return
+
     op.drop_table("player_game_details")
     op.drop_table("game_details")
     op.drop_table("game_infos")
