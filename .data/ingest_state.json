@@ -15,8 +15,28 @@
     "ENG-Premier League": {
       "2000/2001": {
         "schedule_done": true,
-        "last_detail_game_id": 353028,
+        "last_detail_game_id": 353356,
         "detail_failures": 8
+      },
+      "2001/2002": {
+        "schedule_done": true,
+        "last_detail_game_id": 352976,
+        "detail_failures": 3
+      },
+      "2002/2003": {
+        "schedule_done": true,
+        "last_detail_game_id": 352436,
+        "detail_failures": 23
+      },
+      "2003/2004": {
+        "schedule_done": true,
+        "last_detail_game_id": 90773,
+        "detail_failures": 11
+      },
+      "2004/2005": {
+        "schedule_done": true,
+        "last_detail_game_id": 108073,
+        "detail_failures": 0
       }
     }
   }
